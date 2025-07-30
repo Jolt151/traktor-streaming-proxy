@@ -106,8 +106,21 @@ fun main() {
     Runtime.getRuntime().addShutdownHook(object : Thread() {
         override fun run() {
             Config.saveConfig()
+            // To reset, delete these files and refresh beatport in traktor
+            saveHashMap(traktorIdToTrackId, "traktorIdToTrackId.ser")
+            saveHashMap(trackIdToSource, "trackIdToSource.ser")
         }
     })
+
+    val traktorIdToTrackIdCache = loadHashMap("traktorIdToTrackId.ser")
+    if (traktorIdToTrackIdCache != null) {
+        traktorIdToTrackId.putAll(traktorIdToTrackIdCache as HashMap<Long, String>)
+    }
+
+    val trackIdToSourceCache = loadHashMap("trackIdToSource.ser")
+    if (trackIdToSourceCache != null) {
+        trackIdToSource.putAll(trackIdToSourceCache as HashMap<String, Int>)
+    }
 
     prop.getProperty("sources.enabled", "").split(",").map { name -> allSources[name] }.forEach {
         if (it != null)
@@ -282,5 +295,25 @@ private fun List<TrackResponse>.toNewSearchApi(): List<BeatportTrack> {
             track_id = it.id,
             length = it.length_ms
         )
+    }
+}
+
+fun saveHashMap(map: HashMap<Long, String>, filename: String) {
+    ObjectOutputStream(FileOutputStream(filename)).use { it.writeObject(map) }
+}
+
+@JvmName("saveHashmap2")
+fun saveHashMap(map: HashMap<String, Int>, filename: String) {
+    ObjectOutputStream(FileOutputStream(filename)).use { it.writeObject(map) }
+}
+
+fun loadHashMap(filename: String): HashMap<Any, Any>? {
+    println("loading hashmap")
+    return try {
+        ObjectInputStream(FileInputStream(filename)).use { it.readObject() as HashMap<Any, Any> }
+            .also { println("loaded hashmap $it") }
+    } catch (e: Exception) {
+        println("could not load hashmap: $e")
+        null // Handle case where file doesn't exist
     }
 }
