@@ -33,6 +33,9 @@ dependencies {
     implementation("com.github.0xf4b1:spotify-kt:v0.1")
     implementation("com.github.0xf4b1:tidal-kt:v0.3.0")
 
+    implementation("net.jthink:jaudiotagger:3.0.1")
+    // Replace 3.0.1 with the latest version if available
+
     testImplementation(kotlin("test"))
     implementation(kotlin("stdlib-jdk8"))
 }

@@ -2,6 +2,10 @@ package sources
 
 import beatport.api.*
 import io.github.tiefensuche.spotify.api.SpotifyApi
+import kotlinx.coroutines.GlobalScope
+import kotlinx.coroutines.launch
+import org.jaudiotagger.audio.AudioFileIO
+import org.jaudiotagger.tag.FieldKey
 import xyz.gianlu.librespot.audio.decoders.AudioQuality
 import xyz.gianlu.librespot.audio.decoders.VorbisOnlyAudioQuality
 import xyz.gianlu.librespot.core.Session
@@ -70,8 +74,14 @@ class Spotify : ISource {
     }
 
     override fun download(id: String): ByteArray {
-        streamUri(id)
-        return File("output.mp4").readBytes()
+        val cacheFile = downloadFromCache(id)
+        if (cacheFile == null) {
+            streamUri(id)
+            copyTrackToCache(id)
+            return File("output.mp4").readBytes()
+        } else {
+            return cacheFile.readBytes()
+        }
     }
 
     private fun createSession() {
@@ -84,11 +94,15 @@ class Spotify : ISource {
 
     private fun token(): String {
         session?.let {
-            return "Bearer " + it.tokens().getToken("user-library-read", "user-follow-read").accessToken
+            return "Bearer " + it.tokens()
+                .getToken("user-library-read", "user-follow-read", "playlist-read-private").accessToken
         } ?: throw Exception("No session!")
     }
 
-    private fun getAllTracks(id: String, func: (id: String, refresh: Boolean) -> List<io.github.tiefensuche.spotify.api.Track>): List<Track> {
+    private fun getAllTracks(
+        id: String,
+        func: (id: String, refresh: Boolean) -> List<io.github.tiefensuche.spotify.api.Track>
+    ): List<Track> {
         val res = func(id, true).toMutableList()
         do {
             val next = func(id, false)
@@ -98,7 +112,14 @@ class Spotify : ISource {
     }
 
     private fun mapTracks(tracks: List<io.github.tiefensuche.spotify.api.Track>): List<Track> {
-        return tracks.map { track -> Track(track.id.substring(track.id.lastIndexOf(':') + 1), listOf(Artist(1, track.artist)), track.title, track.duration) }
+        return tracks.map { track ->
+            Track(
+                track.id.substring(track.id.lastIndexOf(':') + 1),
+                listOf(Artist(1, track.artist)),
+                track.title,
+                track.duration
+            )
+        }
     }
 
     private fun mapPlaylists(playlists: List<io.github.tiefensuche.spotify.api.Playlist>): List<Playlist> {
@@ -110,7 +131,8 @@ class Spotify : ISource {
 
     private fun streamUri(id: String) {
         val uri = "spotify:track:$id"
-        val stream = session!!.contentFeeder().load(TrackId.fromUri(uri), VorbisOnlyAudioQuality(AudioQuality.HIGH), true, null)
+        val stream =
+            session!!.contentFeeder().load(TrackId.fromUri(uri), VorbisOnlyAudioQuality(AudioQuality.HIGH), true, null)
         val proc = Runtime.getRuntime().exec(arrayOf("ffmpeg", "-y", "-f", "ogg", "-i", "pipe:", "output.mp4"))
         var cur: Int
         while (stream.`in`.stream().read().also { cur = it } != -1) {
@@ -120,5 +142,46 @@ class Spotify : ISource {
         proc.outputStream.flush()
         proc.outputStream.close()
         proc.waitFor()
+    }
+
+    /** Return file if exists, or null if does not exist in cache*/
+    private fun downloadFromCache(id: String): File? {
+        val folder = File("cache")
+        if (!folder.exists()) {
+            folder.mkdir()
+        }
+        val file = File(folder, "$id.mp4")
+        return if (file.exists()) {
+            file
+        } else {
+            null
+        }
+    }
+
+    private fun copyTrackToCache(id: String) = GlobalScope.launch {
+        println("copying track to cache")
+
+        try {
+            val folder = File("cache")
+            if (!folder.exists()) {
+                folder.mkdir()
+            }
+            val file = File("output.mp4").copyTo(File(folder, "$id.mp4"), true)
+
+            launch {
+                // Async update the cache file with tags
+                println("updating cache file with tags")
+                val track = api.getTrack(id)
+                println("for track ${track.artist} - ${track.title}")
+                val f = AudioFileIO.read(file)
+                f.tagOrCreateAndSetDefault.apply {
+                    setField(FieldKey.TITLE, track.title)
+                    setField(FieldKey.ARTIST, track.artist)
+                }
+                f.commit()
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
     }
 }

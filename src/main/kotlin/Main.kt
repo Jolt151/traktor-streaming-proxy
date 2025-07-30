@@ -19,6 +19,9 @@ import sources.Youtube
 import java.io.File
 import java.io.FileInputStream
 import java.io.FileOutputStream
+import java.io.ObjectInputStream
+import java.io.ObjectOutputStream
+import java.io.Serializable
 import java.util.*
 import kotlin.collections.ArrayList
 import kotlin.math.min
@@ -30,7 +33,8 @@ val traktorIdToTrackId: HashMap<Long, String> = HashMap()
 val allSources = mapOf(
     "youtube" to Youtube::class.java,
     "spotify" to Spotify::class.java,
-    "tidal" to Tidal::class.java)
+    "tidal" to Tidal::class.java
+)
 
 object Config {
     val prop = Properties()
@@ -175,15 +179,27 @@ fun main() {
 
             get("/v4/catalog/genres/{id}/tracks/") {
                 call.parameters["id"]?.let {
-                    call.respond(GenreTrackResponse(processTracks(it.toInt() - 1, sources[it.toInt() - 1].getGenre()), "" /* unused by Traktor */))
+                    call.respond(
+                        GenreTrackResponse(
+                            processTracks(it.toInt() - 1, sources[it.toInt() - 1].getGenre()),
+                            "" /* unused by Traktor */
+                        )
+                    )
                 }
             }
 
             get("/v4/curation/playlists/") {
                 call.parameters["genre_id"]?.let {
-                    val results = sources[it.toInt() - 1].getCuratedPlaylists(!call.parameters.contains("more")).map { playlist ->
-                        Playlist((it + playlist.id).toLong(), playlist.name) }
-                    call.respond(CuratedPlaylistsResponse(results, if (results.isNotEmpty()) "api.beatport.com/v4/curation/playlists/?genre_id=$it&more" else ""))
+                    val results =
+                        sources[it.toInt() - 1].getCuratedPlaylists(!call.parameters.contains("more")).map { playlist ->
+                            Playlist((it + playlist.id).toLong(), playlist.name)
+                        }
+                    call.respond(
+                        CuratedPlaylistsResponse(
+                            results,
+                            if (results.isNotEmpty()) "api.beatport.com/v4/curation/playlists/?genre_id=$it&more" else ""
+                        )
+                    )
                 }
             }
 
@@ -191,25 +207,43 @@ fun main() {
                 call.parameters["id"]?.let {
                     val sourceId = it.substring(0, 1).toInt() - 1
                     val results = processTracks(sourceId, sources[sourceId].getCuratedPlaylist(it.substring(1)))
-                    call.respond(CuratedPlaylistResponse(results.map { track -> PlaylistItem(track) }, "" /* unused by Traktor */))
+                    call.respond(
+                        CuratedPlaylistResponse(
+                            results.map { track -> PlaylistItem(track) },
+                            "" /* unused by Traktor */
+                        )
+                    )
                 }
             }
 
             get("/v4/my/playlists/") {
-                call.respond(CuratedPlaylistsResponse(sources.mapIndexed { id, source -> source.getPlaylists().map { playlist -> Playlist("${id + 1}${playlist.id}".toLong(), playlist.name) } }.flatten(), "" /* not needed */))
+                call.respond(CuratedPlaylistsResponse(sources.mapIndexed { id, source ->
+                    source.getPlaylists()
+                        .map { playlist -> Playlist("${id + 1}${playlist.id}".toLong(), playlist.name) }
+                }.flatten(), "" /* not needed */))
             }
 
             get("/v4/my/playlists/{id}/tracks/") {
                 call.parameters["id"]?.let {
                     val sourceId = it.substring(0, 1).toInt() - 1
                     val results = processTracks(sourceId, sources[sourceId].getPlaylist(it.substring(1)))
-                    call.respond(CuratedPlaylistResponse(results.map { track -> PlaylistItem(track) }, "" /* unused by Traktor */))
+                    call.respond(
+                        CuratedPlaylistResponse(
+                            results.map { track -> PlaylistItem(track) },
+                            "" /* unused by Traktor */
+                        )
+                    )
                 }
             }
 
             get("/v4/catalog/genres/{id}/top/100/") {
                 call.parameters["id"]?.let {
-                    call.respond(GenreTrackResponse(processTracks(it.toInt() - 1, sources[it.toInt() - 1].getTop100()), "" /* unused by Traktor */))
+                    call.respond(
+                        GenreTrackResponse(
+                            processTracks(it.toInt() - 1, sources[it.toInt() - 1].getTop100()),
+                            "" /* unused by Traktor */
+                        )
+                    )
                 }
             }
 
@@ -246,6 +280,7 @@ private fun List<TrackResponse>.toNewSearchApi(): List<BeatportTrack> {
             },
             track_name = it.name,
             track_id = it.id,
-            length = it.length_ms)
+            length = it.length_ms
+        )
     }
 }
